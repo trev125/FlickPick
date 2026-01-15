@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getResult, getSession, reroll } from "../api";
+import { getResult, getSession, reroll, previous } from "../api";
 import type { Movie, SessionInfo, MatchedCriteria } from "../types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Loader2, Shuffle, Plus, ExternalLink, Frown, Popcorn, PartyPopper, Star, ChevronDown, ChevronUp, ShieldAlert, Calendar, Clock, Film, Clapperboard, Leaf, Video } from "lucide-react";
+import { Loader2, Shuffle, Plus, ExternalLink, Frown, Popcorn, PartyPopper, Star, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, ShieldAlert, Calendar, Clock, Film, Clapperboard, Leaf, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LOADING_MESSAGES = [
@@ -48,6 +48,7 @@ export default function Results() {
   const [totalMatches, setTotalMatches] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isLast, setIsLast] = useState(false);
+  const [isFirst, setIsFirst] = useState(true);
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [expandDescription, setExpandDescription] = useState(false);
   const [matchedCriteria, setMatchedCriteria] = useState<MatchedCriteria | null>(null);
@@ -56,6 +57,13 @@ export default function Results() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0]);
   const [rerolling, setRerolling] = useState(false);
+
+  // Swipe/drag handling for Tinder-like card movement
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartX = useRef<number | null>(null);
+  const minSwipeDistance = 100;
 
   const userId = code ? localStorage.getItem(`flickpick_userId_${code}`) || "" : "";
 
@@ -86,6 +94,7 @@ export default function Results() {
       setTotalMatches(result.totalMatches);
       setCurrentIndex(result.currentIndex);
       setIsLast(result.isLast);
+      setIsFirst(result.currentIndex === 0);
       setMatchedCriteria(result.matchedCriteria);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load results");
@@ -114,17 +123,92 @@ export default function Results() {
       const response = await reroll(code);
       setMovie(response.result);
       setIsLast(response.isLast);
+      setIsFirst(response.isFirst);
       setCurrentIndex((prev) => prev + 1);
       setExpandDescription(false);
-      
-      // If we just moved to the last movie and tried to go further, show end screen
-      if (response.isLast && currentIndex + 1 >= totalMatches - 1) {
-        // Don't show end screen yet - let them see the last movie first
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to pick different movie");
     } finally {
       setRerolling(false);
+    }
+  };
+
+  const handlePrevious = async () => {
+    if (!code || rerolling || isFirst) return;
+    
+    setRerolling(true);
+    setShowEndScreen(false);
+    try {
+      const response = await previous(code);
+      setMovie(response.result);
+      setIsLast(response.isLast);
+      setIsFirst(response.isFirst);
+      setCurrentIndex((prev) => prev - 1);
+      setExpandDescription(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to go back");
+    } finally {
+      setRerolling(false);
+    }
+  };
+
+  // Drag/swipe handlers for Tinder-like card movement
+  const handleDragStart = (clientX: number) => {
+    if (rerolling) return;
+    setIsDragging(true);
+    dragStartX.current = clientX;
+  };
+
+  const handleDragMove = (clientX: number) => {
+    if (!isDragging || dragStartX.current === null) return;
+    const offset = clientX - dragStartX.current;
+    setDragOffset(offset);
+  };
+
+  const handleDragEnd = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    
+    if (dragOffset > minSwipeDistance && !isFirst) {
+      handlePrevious();
+    } else if (dragOffset < -minSwipeDistance && !isLast) {
+      handleReroll();
+    }
+    
+    setDragOffset(0);
+    dragStartX.current = null;
+  };
+
+  // Touch events
+  const onTouchStart = (e: React.TouchEvent) => {
+    handleDragStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    handleDragMove(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    handleDragEnd();
+  };
+
+  // Mouse events for desktop drag
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    handleDragStart(e.clientX);
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    handleDragMove(e.clientX);
+  };
+
+  const onMouseUp = () => {
+    handleDragEnd();
+  };
+
+  const onMouseLeave = () => {
+    if (isDragging) {
+      handleDragEnd();
     }
   };
 
@@ -252,6 +336,10 @@ export default function Results() {
 
   const hasRatings = movie.imdbRating || movie.rtCriticRating || movie.rtAudienceRating;
 
+  // Slight rotation for visual feedback (very subtle)
+  const rotation = dragOffset * 0.01;
+  const opacity = 1 - Math.abs(dragOffset) / 500;
+
   return (
     <div className="space-y-4">
       <div className="text-center">
@@ -264,7 +352,25 @@ export default function Results() {
         </p>
       </div>
 
-      <Card className={cn("transition-all", rerolling && "opacity-50 scale-[0.98]")}>
+      <Card 
+        ref={cardRef}
+        className={cn(
+          "cursor-grab active:cursor-grabbing select-none",
+          !isDragging && "transition-transform duration-200",
+          rerolling && "opacity-50 scale-[0.98]"
+        )}
+        style={{
+          transform: `translateX(${dragOffset}px) rotate(${rotation}deg)`,
+          opacity: isDragging ? opacity : 1,
+        }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseLeave}
+      >
         <CardContent className="pt-6 text-center space-y-4">
           {movie.poster ? (
             <img
@@ -539,29 +645,49 @@ export default function Results() {
 
       <p className="text-center text-sm text-muted-foreground">
         Showing {currentIndex + 1} of {totalMatches} matching movie{totalMatches !== 1 ? "s" : ""}
+        {totalMatches > 1 && <span className="block text-xs mt-1">Drag card or use arrows to browse</span>}
       </p>
 
-      <div className="flex gap-3">
+      <div className="flex gap-2">
         {totalMatches > 1 && (
-          <Button
-            variant="secondary"
-            className="flex-1"
-            onClick={handleReroll}
-            disabled={rerolling}
-          >
-            {rerolling ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Shuffle className="h-4 w-4" />
-            )}
-            {rerolling ? "Picking..." : "Different Pick"}
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handlePrevious}
+              disabled={rerolling || isFirst}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1"
+              onClick={handleReroll}
+              disabled={rerolling || isLast}
+            >
+              {rerolling ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Shuffle className="h-4 w-4" />
+              )}
+              {rerolling ? "Loading..." : "Different Pick"}
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleReroll}
+              disabled={rerolling || isLast}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </>
         )}
-        <Button className="flex-1" onClick={() => navigate("/")}>
-          <Plus className="h-4 w-4" />
-          New Session
-        </Button>
       </div>
+
+      <Button className="w-full" variant="outline" onClick={() => navigate("/")}>
+        <Plus className="h-4 w-4" />
+        New Session
+      </Button>
     </div>
   );
 }

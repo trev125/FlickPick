@@ -16,6 +16,7 @@ import {
   allUsersSubmitted,
   calculateMatch,
   rerollMovie,
+  previousMovie,
 } from "./session.js";
 import { getAvailableGenres, getMovieLibrarySections } from "./plex.js";
 import { RUNTIME_BLOCKS, DECADES, MOODS } from "./types.js";
@@ -179,6 +180,16 @@ app.get("/api/session/:code/result", async (req, res) => {
 // Reroll - move to next movie in shuffled list
 app.post("/api/session/:code/reroll", (req, res) => {
   const result = rerollMovie(req.params.code);
+  if (!result) {
+    return res.status(404).json({ error: "Session not found" });
+  }
+
+  res.json(result);
+});
+
+// Previous - move to previous movie in shuffled list
+app.post("/api/session/:code/previous", (req, res) => {
+  const result = previousMovie(req.params.code);
   if (!result) {
     return res.status(404).json({ error: "Session not found" });
   }

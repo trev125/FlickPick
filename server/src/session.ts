@@ -190,7 +190,7 @@ export async function calculateMatch(code: string): Promise<Session | null> {
   return session;
 }
 
-export function rerollMovie(code: string): { result: Movie | null; isLast: boolean } | null {
+export function rerollMovie(code: string): { result: Movie | null; isLast: boolean; isFirst: boolean } | null {
   const session = sessions.get(code.toUpperCase());
   if (!session || session.matchedMovies.length === 0) return null;
 
@@ -200,13 +200,34 @@ export function rerollMovie(code: string): { result: Movie | null; isLast: boole
   // Check if we've reached the end
   if (session.currentIndex >= session.matchedMovies.length) {
     session.currentIndex = session.matchedMovies.length - 1;
-    return { result: session.result, isLast: true };
+    return { result: session.result, isLast: true, isFirst: false };
   }
 
   session.result = session.matchedMovies[session.currentIndex];
   const isLast = session.currentIndex >= session.matchedMovies.length - 1;
+  const isFirst = session.currentIndex === 0;
   
-  return { result: session.result, isLast };
+  return { result: session.result, isLast, isFirst };
+}
+
+export function previousMovie(code: string): { result: Movie | null; isLast: boolean; isFirst: boolean } | null {
+  const session = sessions.get(code.toUpperCase());
+  if (!session || session.matchedMovies.length === 0) return null;
+
+  // Move to previous movie
+  session.currentIndex--;
+  
+  // Check if we've reached the beginning
+  if (session.currentIndex < 0) {
+    session.currentIndex = 0;
+    return { result: session.result, isLast: false, isFirst: true };
+  }
+
+  session.result = session.matchedMovies[session.currentIndex];
+  const isLast = session.currentIndex >= session.matchedMovies.length - 1;
+  const isFirst = session.currentIndex === 0;
+  
+  return { result: session.result, isLast, isFirst };
 }
 
 // Cleanup old sessions (run periodically)

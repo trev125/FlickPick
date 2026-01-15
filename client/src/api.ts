@@ -60,8 +60,14 @@ export async function getResult(code: string): Promise<MatchResult> {
   return request<MatchResult>(`/session/${code}/result`);
 }
 
-export async function reroll(code: string): Promise<{ result: MatchResult["result"]; isLast: boolean }> {
-  return request<{ result: MatchResult["result"]; isLast: boolean }>(`/session/${code}/reroll`, {
+export async function reroll(code: string): Promise<{ result: MatchResult["result"]; isLast: boolean; isFirst: boolean }> {
+  return request<{ result: MatchResult["result"]; isLast: boolean; isFirst: boolean }>(`/session/${code}/reroll`, {
+    method: "POST",
+  });
+}
+
+export async function previous(code: string): Promise<{ result: MatchResult["result"]; isLast: boolean; isFirst: boolean }> {
+  return request<{ result: MatchResult["result"]; isLast: boolean; isFirst: boolean }>(`/session/${code}/previous`, {
     method: "POST",
   });
 }
