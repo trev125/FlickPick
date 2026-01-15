@@ -1,5 +1,5 @@
 import { customAlphabet } from "nanoid";
-import { Session, UserPreferences, Movie, MatchedCriteria } from "./types.js";
+import { Session, UserPreferences, Movie } from "./types.js";
 import { getAllMovies, enrichMovieWithRatings } from "./plex.js";
 
 const generateCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
@@ -81,48 +81,6 @@ function computeOverlappingRange(
   if (min > max) return null;
   
   return { min, max };
-}
-
-function movieMatchesPreferences(movie: Movie, prefs: UserPreferences): boolean {
-  // Include watched filter
-  if (!prefs.includeWatched && movie.watched) {
-    return false;
-  }
-
-  // Genre filter (any match)
-  if (prefs.genres.length > 0) {
-    const hasMatchingGenre = movie.genres.some((g) => prefs.genres.includes(g));
-    if (!hasMatchingGenre) return false;
-  }
-
-  // Year range filter
-  if (prefs.yearRange) {
-    if (movie.year < prefs.yearRange.min || movie.year > prefs.yearRange.max) {
-      return false;
-    }
-  }
-
-  // Runtime range filter
-  if (prefs.runtimeRange) {
-    if (movie.runtime < prefs.runtimeRange.min || movie.runtime > prefs.runtimeRange.max) {
-      return false;
-    }
-  }
-
-  // Rating filters
-  if (prefs.minImdbRating !== null && movie.imdbRating !== null) {
-    if (movie.imdbRating < prefs.minImdbRating) return false;
-  }
-
-  if (prefs.minRtCriticRating !== null && movie.rtCriticRating !== null) {
-    if (movie.rtCriticRating < prefs.minRtCriticRating) return false;
-  }
-
-  if (prefs.minRtAudienceRating !== null && movie.rtAudienceRating !== null) {
-    if (movie.rtAudienceRating < prefs.minRtAudienceRating) return false;
-  }
-
-  return true;
 }
 
 export async function calculateMatch(code: string): Promise<Session | null> {

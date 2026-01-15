@@ -4,9 +4,6 @@ import { resolve } from "path";
 // Load .env from project root
 config({ path: resolve(process.cwd(), "../.env") });
 
-console.log("PLEX_URL:", process.env.PLEX_URL);
-console.log("PLEX_TOKEN:", process.env.PLEX_TOKEN ? "[SET]" : "[NOT SET]");
-
 import express from "express";
 import cors from "cors";
 import path from "path";

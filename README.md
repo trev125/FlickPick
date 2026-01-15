@@ -1,40 +1,55 @@
 # FlickPick
 
-A collaborative movie picker for Plex. Two people join a session, set their preferences (genres, ratings, runtime, decade), and FlickPick recommends a movie from your Plex library that matches both.
+A collaborative movie picker for Plex. Two people join a session, set their preferences, and FlickPick recommends a movie from your Plex library that satisfies both.
 
 ## Features
 
 - **Session-based** - Create a room with a 6-character code, share it with someone
 - **Preference filters**:
+  - Moods (Feel Good, Edge of Seat, Mind-Bending, etc.)
   - Genres (multi-select from your library)
+  - Era (year range with 5-year steps)
+  - Runtime (15-minute intervals)
   - IMDB rating (minimum)
-  - Rotten Tomatoes score (minimum)
-  - Runtime blocks (under 90min, 90-120min, 120-150min, 150min+)
-  - Decades (1950s-2020s, multi-select)
   - Include/exclude watched movies
 - **Smart matching** - Finds movies that satisfy both users' criteria
-- **Reroll** - Don't like the pick? Get another from the matched list
+- **Rich movie info**:
+  - IMDB, RT Critics, and RT Audience ratings with visual comparison bars
+  - Director and cast with headshot images
+  - Content rating (links to IMDB parental guide)
+  - "Why This Movie?" breakdown showing matched criteria
+- **Reroll** - Don't like the pick? Cycle through all matches
+- **Customizable UI** - Dark/light mode, 15 accent colors
+
+## Screenshots
+
+![FlickPick Demo](https://via.placeholder.com/800x400?text=FlickPick+Screenshot)
 
 ## Prerequisites
 
-1. **Plex Token** - Find yours at: https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/
+1. **Plex Server** with movie libraries
 
-2. **OMDB API Key** (free, for IMDB/RT ratings) - Get one at: http://www.omdbapi.com/apikey.aspx
+2. **Plex Token** - Get yours at: https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/
+
+3. **OMDB API Key** (free, 1000 req/day) - Get one at: http://www.omdbapi.com/apikey.aspx
+
+4. **TMDB API Key** (free, for actor headshots) - Get one at: https://www.themoviedb.org/settings/api
 
 ## Setup
 
 ### Environment Variables
 
-Copy the example env file and fill in your values:
-
 ```bash
 cp .env.example .env
 ```
+
+Edit `.env` with your values:
 
 ```env
 PLEX_URL=http://your-plex-server:32400
 PLEX_TOKEN=your-plex-token
 OMDB_API_KEY=your-omdb-api-key
+TMDB_API_KEY=your-tmdb-api-key
 PORT=3002
 ```
 
@@ -44,11 +59,11 @@ PORT=3002
 docker-compose up -d --build
 ```
 
-The app will be available at `http://localhost:2`
+The app will be available at `http://localhost:3002`
 
 ### Local Development
 
-Requires Node.js 16+ and pnpm.
+Requires Node.js 22+ and pnpm.
 
 ```bash
 pnpm install
@@ -68,23 +83,23 @@ pnpm start
 ## Usage
 
 1. Open FlickPick in your browser
-2. Enter your name and click **Create New Session**
+2. Enter your name and click **Start New Session**
 3. Share the 6-character code (or the full link) with your movie partner
 4. Both users select their preferences and submit
 5. FlickPick shows a movie that matches both preferences
-6. Click **Pick Another** to reroll, or **New Session** to start over
+6. Click **Different Pick** to see more options, or **New Session** to start over
 
 ## Tech Stack
 
-- **Server**: Express, TypeScript
-- **Client**: React, Vite, React Router
-- **APIs**: Plex API, OMDB API
+- **Server**: Express, TypeScript, Node.js 22
+- **Client**: React, Vite, Tailwind CSS v4, shadcn/ui
+- **APIs**: Plex API, OMDB API, TMDB API
 
-## Notes
+## Data & Caching
 
-- OMDB free tier allows 1,000 requests/day - ratings are cached to minimize API calls
-- Sessions expire after 24 hours
-- The app only reads from your Plex library, it doesn't modify anything
+- **Ratings cache** - OMDB/TMDB data is cached to `ratings-cache.json` to minimize API calls
+- **Sessions** - Stored in memory, expire after 24 hours
+- **Read-only** - FlickPick only reads from your Plex library, never modifies anything
 
 ## License
 
