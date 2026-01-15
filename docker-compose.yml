@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  flickpick:
+    build: .
+    container_name: flickpick
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - PLEX_URL=${PLEX_URL}
+      - PLEX_TOKEN=${PLEX_TOKEN}
+      - OMDB_API_KEY=${OMDB_API_KEY}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - PORT=3002
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
