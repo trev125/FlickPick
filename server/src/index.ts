@@ -72,9 +72,33 @@ app.get("/api/libraries", async (_, res) => {
   }
 });
 
-// Create a new session
+// Verify admin password
+app.post("/api/admin/verify", (req, res) => {
+  const { password } = req.body;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    // No password set = no protection (for local dev)
+    return res.json({ valid: true });
+  }
+
+  if (password === adminPassword) {
+    return res.json({ valid: true });
+  }
+
+  res.status(401).json({ valid: false, error: "Invalid password" });
+});
+
+// Create a new session (requires admin password)
 app.post("/api/session", (req, res) => {
-  const { movieCount } = req.body || {};
+  const { movieCount, adminPassword } = req.body || {};
+  const requiredPassword = process.env.ADMIN_PASSWORD;
+
+  // Check admin password if one is configured
+  if (requiredPassword && adminPassword !== requiredPassword) {
+    return res.status(401).json({ error: "Admin password required to create sessions" });
+  }
+
   const session = createSession(movieCount);
   res.json({ code: session.code, movieCount: session.movieCount });
 });

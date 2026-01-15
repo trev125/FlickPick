@@ -1,10 +1,11 @@
 # FlickPick
 
-A collaborative movie picker for Plex. Two people join a session, set their preferences, and FlickPick recommends a movie from your Plex library that satisfies both.
+A collaborative movie picker for Plex. One or two people join a session, set their preferences, vote Tinder-style on matched movies, and see which films everyone agrees on.
 
 ## Features
 
-- **Session-based** - Create a room with a 6-character code, share it with someone
+- **Session-based** - Create a room with a 6-character code, share it with someone (or play solo)
+- **Admin protection** - Optional password to control who can create sessions
 - **Preference filters**:
   - Moods (Feel Good, Edge of Seat, Mind-Bending, etc.)
   - Genres (multi-select from your library)
@@ -12,18 +13,25 @@ A collaborative movie picker for Plex. Two people join a session, set their pref
   - Runtime (15-minute intervals)
   - IMDB rating (minimum)
   - Include/exclude watched movies
+- **Tinder-style voting** - Swipe right (yes) or left (no) on each movie
 - **Smart matching** - Finds movies that satisfy both users' criteria
 - **Rich movie info**:
   - IMDB, RT Critics, and RT Audience ratings with visual comparison bars
   - Director and cast with headshot images
   - Content rating (links to IMDB parental guide)
-  - "Why This Movie?" breakdown showing matched criteria
-- **Reroll** - Don't like the pick? Cycle through all matches
+  - Expandable descriptions
+- **Final results** - See which movies both people said yes to, plus collapsible sections showing who rejected what
+- **Configurable movie count** - Choose 10-50 movies to vote on (default: 25)
+- **Solo mode** - Use it by yourself to filter down your library
 - **Customizable UI** - Dark/light mode, 15 accent colors
 
-## Screenshots
+## How It Works
 
-![FlickPick Demo](https://via.placeholder.com/800x400?text=FlickPick+Screenshot)
+1. **Create Session** - Admin enters password, sets movie count, creates session
+2. **Share Code** - Give the 6-character code to your movie partner
+3. **Set Preferences** - Both users select their mood, genres, era, runtime, etc.
+4. **Vote** - Swipe through movies Tinder-style (right = yes, left = no)
+5. **Results** - See the movies you both said yes to!
 
 ## Prerequisites
 
@@ -51,6 +59,9 @@ PLEX_TOKEN=your-plex-token
 OMDB_API_KEY=your-omdb-api-key
 TMDB_API_KEY=your-tmdb-api-key
 PORT=3002
+
+# Optional: Require password to create new sessions
+ADMIN_PASSWORD=your-secret-password
 ```
 
 ### Docker (Recommended)
@@ -80,14 +91,17 @@ pnpm build
 pnpm start
 ```
 
-## Usage
+## Authentication
 
-1. Open FlickPick in your browser
-2. Enter your name and click **Start New Session**
-3. Share the 6-character code (or the full link) with your movie partner
-4. Both users select their preferences and submit
-5. FlickPick shows a movie that matches both preferences
-6. Click **Different Pick** to see more options, or **New Session** to start over
+FlickPick uses a simple invite-code system:
+
+- **Creating sessions** requires the admin password (if `ADMIN_PASSWORD` is set)
+- **Joining sessions** only requires the 6-character session code
+- Sessions automatically expire after 24 hours
+
+This lets you expose FlickPick publicly while controlling who can create sessions. Just share session codes with friends when you want to pick a movie together.
+
+If `ADMIN_PASSWORD` is not set, anyone can create sessions (useful for local/private use).
 
 ## Tech Stack
 
@@ -98,6 +112,7 @@ pnpm start
 ## Data & Caching
 
 - **Ratings cache** - OMDB/TMDB data is cached to `ratings-cache.json` to minimize API calls
+- **Image proxy** - All images are proxied through the server so they work from external networks
 - **Sessions** - Stored in memory, expire after 24 hours
 - **Read-only** - FlickPick only reads from your Plex library, never modifies anything
 

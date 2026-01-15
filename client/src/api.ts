@@ -23,10 +23,17 @@ export async function getFilters(): Promise<FilterOptions> {
   return request<FilterOptions>("/filters");
 }
 
-export async function createSession(movieCount?: number): Promise<{ code: string; movieCount: number }> {
+export async function verifyAdminPassword(password: string): Promise<{ valid: boolean }> {
+  return request<{ valid: boolean }>("/admin/verify", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function createSession(movieCount?: number, adminPassword?: string): Promise<{ code: string; movieCount: number }> {
   return request<{ code: string; movieCount: number }>("/session", { 
     method: "POST",
-    body: JSON.stringify({ movieCount }),
+    body: JSON.stringify({ movieCount, adminPassword }),
   });
 }
 
