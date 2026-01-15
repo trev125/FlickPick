@@ -193,10 +193,23 @@ app.get("/api/session/:code/result", async (req, res) => {
       .json({ error: "Not all users have submitted preferences" });
   }
 
-  // Calculate match if not already done
-  if (!session.result && session.matchedMovies.length === 0) {
+  // Calculate match if not already done (with lock to prevent race conditions)
+  if (!session.result && session.matchedMovies.length === 0 && !session.isCalculating) {
+    session.isCalculating = true;
     console.log(`Calculating match for session ${req.params.code}`);
     session = await calculateMatch(req.params.code);
+    if (session) {
+      session.isCalculating = false;
+    }
+  } else if (session.isCalculating) {
+    // Another request is calculating, wait for it
+    console.log(`Waiting for calculation to complete for session ${req.params.code}`);
+    let attempts = 0;
+    while (session?.isCalculating && attempts < 30) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      session = getSession(req.params.code);
+      attempts++;
+    }
   } else {
     console.log(`Using cached result for session ${req.params.code}`);
   }
@@ -244,6 +257,8 @@ app.post("/api/session/:code/vote", (req, res) => {
   if (!userId || !movieId || vote === undefined) {
     return res.status(400).json({ error: "userId, movieId, and vote are required" });
   }
+
+  console.log(`Vote: session=${req.params.code}, user=${userId}, movie=${movieId}, vote=${vote}`);
 
   const result = voteOnMovie(req.params.code, userId, movieId, vote);
   if (!result) {

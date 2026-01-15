@@ -302,9 +302,18 @@ export function getVotingResults(code: string): VotingResults | null {
   const user2No: Movie[] = [];
   const bothNo: Movie[] = [];
 
+  console.log(`getVotingResults: user1=${user1Id}, user2=${user2Id || 'solo'}`);
+  console.log(`User1 votes:`, session.users[user1Id]?.votes);
+  if (user2Id) console.log(`User2 votes:`, session.users[user2Id]?.votes);
+
   for (const movie of session.matchedMovies) {
-    const user1Vote = session.users[user1Id]?.votes[movie.id];
-    const user2Vote = user2Id ? session.users[user2Id]?.votes[movie.id] : true; // Solo mode: treat as yes
+    // Get votes - undefined means not voted yet, true/false are actual votes
+    const user1VoteRaw = session.users[user1Id]?.votes[movie.id];
+    const user2VoteRaw = user2Id ? session.users[user2Id]?.votes[movie.id] : undefined;
+    
+    // Convert to boolean: true = yes, false = no (or not voted counts as no)
+    const user1Vote = user1VoteRaw === true;
+    const user2Vote = user2Id ? user2VoteRaw === true : true; // Solo mode: treat as yes
 
     if (user1Vote && user2Vote) {
       bothYes.push(movie);
@@ -317,6 +326,7 @@ export function getVotingResults(code: string): VotingResults | null {
     }
   }
 
+  console.log(`Results: bothYes=${bothYes.length}, user1No=${user1No.length}, user2No=${user2No.length}, bothNo=${bothNo.length}`);
   return { bothYes, user1No, user2No, bothNo };
 }
 

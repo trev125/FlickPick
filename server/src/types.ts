@@ -62,6 +62,7 @@ export interface Session {
   matchedMovies: Movie[];
   currentIndex: number;
   matchedCriteria: MatchedCriteria | null;
+  isCalculating?: boolean; // Lock to prevent concurrent calculations
 }
 
 export interface PlexMovie {
