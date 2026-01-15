@@ -97,3 +97,19 @@ export async function vote(
 export async function getVotingResults(code: string): Promise<VotingResults> {
   return request<VotingResults>(`/session/${code}/voting-results`);
 }
+
+export interface SimpleMovie {
+  id: string;
+  title: string;
+  year: number;
+  poster: string | null;
+  imdbRating: number | null;
+  tmdbRating: number | null;
+  rtRating: number | null;
+  inLibrary: boolean;
+}
+
+export async function getSimilarMovies(title: string, year: number): Promise<SimpleMovie[]> {
+  const data = await request<{ similar: SimpleMovie[] }>(`/similar?title=${encodeURIComponent(title)}&year=${year}`);
+  return data.similar;
+}

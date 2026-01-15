@@ -46,11 +46,16 @@ interface OmdbRatings {
   imdbRating: number | null;
   rtCriticRating: number | null;
   rtAudienceRating: number | null;
+  tmdbRating: number | null;
+  tmdbVoteCount: number | null;
   imdbId: string | null;
   contentRating: string | null;
   director: string | null;
   directorImage: string | null;
   cast: CastMember[];
+  backdrop: string | null;
+  keywords: string[];
+  collection: string | null;
 }
 
 // File-based cache for ratings (persists across restarts)
@@ -130,11 +135,139 @@ async function fetchPersonImage(name: string): Promise<string | null> {
   }
 }
 
+// Fetch TMDB movie details (rating, backdrop, keywords, collection)
+interface TmdbMovieData {
+  tmdbRating: number | null;
+  tmdbVoteCount: number | null;
+  backdrop: string | null;
+  keywords: string[];
+  collection: string | null;
+}
+
+async function fetchTmdbMovieData(title: string, year: number): Promise<TmdbMovieData> {
+  const tmdbKey = getTmdbApiKey();
+  if (!tmdbKey) {
+    return { tmdbRating: null, tmdbVoteCount: null, backdrop: null, keywords: [], collection: null };
+  }
+
+  try {
+    // Search for the movie
+    const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${tmdbKey}&query=${encodeURIComponent(title)}&year=${year}`;
+    const searchResponse = await fetch(searchUrl);
+    if (!searchResponse.ok) {
+      return { tmdbRating: null, tmdbVoteCount: null, backdrop: null, keywords: [], collection: null };
+    }
+
+    const searchData = (await searchResponse.json()) as {
+      results?: { id: number; vote_average?: number; vote_count?: number; backdrop_path?: string }[];
+    };
+
+    const movie = searchData.results?.[0];
+    if (!movie) {
+      return { tmdbRating: null, tmdbVoteCount: null, backdrop: null, keywords: [], collection: null };
+    }
+
+    const tmdbRating = movie.vote_average ? Math.round(movie.vote_average * 10) / 10 : null;
+    const tmdbVoteCount = movie.vote_count || null;
+    const backdropRaw = movie.backdrop_path ? `https://image.tmdb.org/t/p/w780${movie.backdrop_path}` : null;
+    const backdrop = proxyImageUrl(backdropRaw);
+
+    // Fetch movie details for collection and keywords
+    const detailsUrl = `https://api.themoviedb.org/3/movie/${movie.id}?api_key=${tmdbKey}&append_to_response=keywords`;
+    const detailsResponse = await fetch(detailsUrl);
+    
+    let keywords: string[] = [];
+    let collection: string | null = null;
+
+    if (detailsResponse.ok) {
+      const details = (await detailsResponse.json()) as {
+        belongs_to_collection?: { name: string } | null;
+        keywords?: { keywords: { name: string }[] };
+      };
+
+      collection = details.belongs_to_collection?.name || null;
+      keywords = details.keywords?.keywords?.map(k => k.name).slice(0, 10) || []; // Limit to 10 keywords
+    }
+
+    return { tmdbRating, tmdbVoteCount, backdrop, keywords, collection };
+  } catch (err) {
+    console.error("TMDB fetch error:", err);
+    return { tmdbRating: null, tmdbVoteCount: null, backdrop: null, keywords: [], collection: null };
+  }
+}
+
 async function fetchOmdbRatings(title: string, year: number): Promise<OmdbRatings> {
   const cacheKey = `${title}-${year}`;
   if (ratingsCache.has(cacheKey)) {
     const cached = ratingsCache.get(cacheKey)!;
-    console.log(`Cache HIT for: ${title} (${year})`);
+    let needsSave = false;
+    
+    // Check if cached entry is missing TMDB data (old cache format)
+    if (cached.tmdbRating === undefined || cached.backdrop === undefined) {
+      console.log(`Cache HIT for: ${title} (${year}) - but missing TMDB data, fetching...`);
+      const tmdbData = await fetchTmdbMovieData(title, year);
+      cached.tmdbRating = tmdbData.tmdbRating;
+      cached.tmdbVoteCount = tmdbData.tmdbVoteCount;
+      cached.backdrop = tmdbData.backdrop;
+      cached.keywords = tmdbData.keywords;
+      cached.collection = tmdbData.collection;
+      needsSave = true;
+      console.log(`Updated cache with TMDB data for: ${title}`);
+    }
+    
+    // Check if cached entry is missing OMDB data (was rate limited)
+    if (cached.imdbRating === null && cached.imdbId === null) {
+      const omdbKey = getOmdbApiKey();
+      if (omdbKey) {
+        console.log(`Cache HIT for: ${title} (${year}) - but missing OMDB data, retrying...`);
+        try {
+          const url = `http://www.omdbapi.com/?t=${encodeURIComponent(title)}&y=${year}&apikey=${omdbKey}`;
+          const response = await fetch(url);
+          const data = (await response.json()) as {
+            Response: string;
+            imdbRating?: string;
+            imdbID?: string;
+            Rated?: string;
+            Director?: string;
+            Actors?: string;
+            Ratings?: { Source: string; Value: string }[];
+          };
+
+          if (data.Response === "True") {
+            if (data.imdbRating && data.imdbRating !== "N/A") {
+              cached.imdbRating = parseFloat(data.imdbRating);
+            }
+            if (data.imdbID) {
+              cached.imdbId = data.imdbID;
+            }
+            if (data.Rated && data.Rated !== "N/A") {
+              cached.contentRating = data.Rated;
+            }
+            if (data.Director && data.Director !== "N/A" && !cached.director) {
+              cached.director = data.Director.split(",")[0].trim();
+            }
+            if (data.Ratings) {
+              for (const rating of data.Ratings) {
+                if (rating.Source === "Rotten Tomatoes") {
+                  cached.rtCriticRating = parseInt(rating.Value);
+                }
+              }
+            }
+            needsSave = true;
+            console.log(`Updated cache with OMDB data for: ${title} - IMDB=${cached.imdbRating}`);
+          }
+        } catch (err) {
+          console.error(`Failed to retry OMDB for ${title}:`, err);
+        }
+      }
+    }
+    
+    if (needsSave) {
+      ratingsCache.set(cacheKey, cached);
+      saveRatingsCache(ratingsCache);
+    } else {
+      console.log(`Cache HIT for: ${title} (${year})`);
+    }
     return cached;
   }
   console.log(`Cache MISS for: ${title} (${year})`);
@@ -144,11 +277,16 @@ async function fetchOmdbRatings(title: string, year: number): Promise<OmdbRating
     imdbRating: null,
     rtCriticRating: null,
     rtAudienceRating: null,
+    tmdbRating: null,
+    tmdbVoteCount: null,
     imdbId: null,
     contentRating: null,
     director: null,
     directorImage: null,
     cast: [],
+    backdrop: null,
+    keywords: [],
+    collection: null,
   };
 
   const omdbKey = getOmdbApiKey();
@@ -237,6 +375,15 @@ async function fetchOmdbRatings(title: string, year: number): Promise<OmdbRating
     }
 
     await Promise.all(imagePromises);
+
+    // Fetch TMDB movie data (rating, backdrop, keywords, collection)
+    const tmdbData = await fetchTmdbMovieData(title, year);
+    ratings.tmdbRating = tmdbData.tmdbRating;
+    ratings.tmdbVoteCount = tmdbData.tmdbVoteCount;
+    ratings.backdrop = tmdbData.backdrop;
+    ratings.keywords = tmdbData.keywords;
+    ratings.collection = tmdbData.collection;
+    console.log(`TMDB data for ${title}: rating=${tmdbData.tmdbRating}, keywords=${tmdbData.keywords.length}, collection=${tmdbData.collection}`);
   } else {
     // No TMDB key, just store names without images
     ratings.cast = actorNames.map(name => ({ name, image: null }));
@@ -326,14 +473,19 @@ export async function getAllMovies(sectionKey?: string): Promise<Movie[]> {
         imdbRating: null,
         rtCriticRating: null,
         rtAudienceRating: null,
+        tmdbRating: null,
+        tmdbVoteCount: null,
         imdbId: null,
         poster: proxyImageUrl(posterUrl),
+        backdrop: null,
         summary: movie.summary || null,
         watched: (movie.viewCount || 0) > 0,
         contentRating: null,
         director: null,
         directorImage: null,
         cast: [],
+        keywords: [],
+        collection: null,
       });
     }
   }
@@ -371,4 +523,93 @@ export async function getAvailableGenres(sectionKey?: string): Promise<string[]>
   }
 
   return Array.from(genreSet).sort();
+}
+
+// Simple movie info for recommendations
+export interface SimpleMovie {
+  id: string;
+  title: string;
+  year: number;
+  poster: string | null;
+  imdbRating: number | null;
+  tmdbRating: number | null;
+  rtRating: number | null; // RT critic rating mapped to 0-10 scale
+  inLibrary: boolean;
+}
+
+// Fetch similar movies from TMDB and cross-reference with Plex library
+export async function getSimilarMovies(title: string, year: number, plexMovies: Movie[]): Promise<SimpleMovie[]> {
+  const tmdbKey = getTmdbApiKey();
+  if (!tmdbKey) return [];
+
+  try {
+    // First, search for the movie on TMDB to get its ID
+    const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${tmdbKey}&query=${encodeURIComponent(title)}&year=${year}`;
+    const searchResponse = await fetch(searchUrl);
+    if (!searchResponse.ok) return [];
+
+    const searchData = (await searchResponse.json()) as {
+      results?: { id: number }[];
+    };
+
+    const tmdbId = searchData.results?.[0]?.id;
+    if (!tmdbId) return [];
+
+    // Fetch recommendations
+    const recsUrl = `https://api.themoviedb.org/3/movie/${tmdbId}/recommendations?api_key=${tmdbKey}`;
+    const recsResponse = await fetch(recsUrl);
+    if (!recsResponse.ok) return [];
+
+    const recsData = (await recsResponse.json()) as {
+      results?: {
+        id: number;
+        title: string;
+        release_date?: string;
+        poster_path?: string | null;
+        vote_average?: number;
+      }[];
+    };
+
+    if (!recsData.results) return [];
+
+    // Create a map of Plex movies by title+year for quick lookup
+    const plexMap = new Map<string, Movie>();
+    for (const movie of plexMovies) {
+      plexMap.set(`${movie.title.toLowerCase()}-${movie.year}`, movie);
+    }
+
+    // Map TMDB recommendations and check if in Plex library
+    const similar: SimpleMovie[] = [];
+    for (const rec of recsData.results.slice(0, 20)) { // Check top 20 recs
+      const recYear = rec.release_date ? parseInt(rec.release_date.split('-')[0]) : 0;
+      const plexKey = `${rec.title.toLowerCase()}-${recYear}`;
+      const inLibrary = plexMap.has(plexKey);
+      
+      // Look up cached ratings if available
+      const cacheKey = `${rec.title}-${recYear}`;
+      const cached = ratingsCache.get(cacheKey);
+      
+      const posterRaw = rec.poster_path ? `https://image.tmdb.org/t/p/w154${rec.poster_path}` : null;
+      
+      similar.push({
+        id: String(rec.id),
+        title: rec.title,
+        year: recYear,
+        poster: proxyImageUrl(posterRaw),
+        imdbRating: cached?.imdbRating || null,
+        tmdbRating: cached?.tmdbRating || (rec.vote_average ? Math.round(rec.vote_average * 10) / 10 : null),
+        rtRating: cached?.rtCriticRating ? Math.round(cached.rtCriticRating) / 10 : null, // Convert 87% to 8.7
+        inLibrary,
+      });
+    }
+
+    // Filter to only movies in library, then sort by rating
+    const inLibraryOnly = similar.filter(m => m.inLibrary);
+    inLibraryOnly.sort((a, b) => (b.tmdbRating || 0) - (a.tmdbRating || 0));
+
+    return inLibraryOnly.slice(0, 5); // Return top 5
+  } catch (err) {
+    console.error("Error fetching similar movies:", err);
+    return [];
+  }
 }

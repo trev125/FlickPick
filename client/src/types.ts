@@ -9,14 +9,19 @@ export interface Movie {
   imdbRating: number | null;
   rtCriticRating: number | null;
   rtAudienceRating: number | null;
+  tmdbRating: number | null;
+  tmdbVoteCount: number | null;
   imdbId: string | null;
   poster: string | null;
+  backdrop: string | null;
   summary: string | null;
   watched: boolean;
   contentRating: string | null;
   director: string | null;
   directorImage: string | null;
   cast: { name: string; image: string | null }[];
+  keywords: string[];
+  collection: string | null;
 }
 
 export interface UserPreferences {

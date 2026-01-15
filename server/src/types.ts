@@ -9,14 +9,19 @@ export interface Movie {
   imdbRating: number | null;
   rtCriticRating: number | null;
   rtAudienceRating: number | null;
+  tmdbRating: number | null;
+  tmdbVoteCount: number | null;
   imdbId: string | null;
   poster: string | null;
+  backdrop: string | null; // TMDB backdrop image
   summary: string | null;
   watched: boolean;
   contentRating: string | null; // PG, R, PG-13, etc.
   director: string | null;
   directorImage: string | null;
   cast: { name: string; image: string | null }[];
+  keywords: string[]; // TMDB keywords (e.g., "dystopia", "based on novel")
+  collection: string | null; // Franchise/collection name (e.g., "Harry Potter Collection")
 }
 
 export interface UserPreferences {

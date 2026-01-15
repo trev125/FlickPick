@@ -17,6 +17,13 @@ function formatRuntime(minutes: number): string {
   return `${hours}h ${mins}m`;
 }
 
+// Title case for keywords (handles hyphens: "son-in-law" -> "Son-In-Law")
+function toTitleCase(str: string): string {
+  return str.replace(/\b\w+/g, word => 
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  );
+}
+
 // Rating bar component
 function RatingBar({ label, value, max, color, icon }: { 
   label: string; 
@@ -273,7 +280,7 @@ export default function Voting() {
     );
   }
 
-  const hasRatings = movie.imdbRating || movie.rtCriticRating || movie.rtAudienceRating;
+  const hasRatings = movie.imdbRating || movie.rtCriticRating || movie.rtAudienceRating || movie.tmdbRating;
 
   return (
     <div className="space-y-4">
@@ -340,57 +347,98 @@ export default function Voting() {
             onMouseUp={onMouseUp}
             onMouseLeave={onMouseLeave}
           >
-          <CardContent className="pt-6 text-center space-y-3">
-            {movie.poster ? (
-              <img
-                src={movie.poster}
-                alt={movie.title}
-                className="w-40 h-60 object-cover rounded-lg mx-auto shadow-lg"
+          {/* Backdrop image */}
+          {movie.backdrop && (
+            <div className="relative h-80 w-full">
+              <img 
+                src={movie.backdrop} 
+                alt="" 
+                className="w-full h-full object-cover object-center"
                 draggable={false}
               />
-            ) : (
-              <div className="w-40 h-60 bg-secondary rounded-lg mx-auto flex items-center justify-center text-muted-foreground">
-                No Poster
-              </div>
-            )}
-
-            <h2 className="text-xl font-bold">{movie.title}</h2>
-
-            {/* Basic info row */}
-            <div className="flex items-center justify-center gap-3 text-sm text-muted-foreground flex-wrap">
-              <span className="flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" />
-                {movie.year}
-              </span>
-              <span className="flex items-center gap-1">
-                <Clock className="h-3.5 w-3.5" />
-                {formatRuntime(movie.runtime)}
-              </span>
-              {movie.contentRating && (
-                <Badge variant="outline" className="text-xs font-normal">
-                  {movie.contentRating}
-                </Badge>
-              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-card via-card/50 to-transparent" />
             </div>
+          )}
+          <CardContent className={movie.backdrop ? "-mt-32 relative z-10" : "pt-4"}>
+            <div className="flex gap-4">
+              {movie.poster ? (
+                <img
+                  src={movie.poster}
+                  alt={movie.title}
+                  className={cn(
+                    "w-24 h-36 object-cover rounded-lg shadow-lg flex-shrink-0",
+                    movie.backdrop && "ring-2 ring-card"
+                  )}
+                  draggable={false}
+                />
+              ) : (
+                <div className="w-24 h-36 bg-secondary rounded-lg flex-shrink-0 flex items-center justify-center text-muted-foreground text-xs">
+                  No Poster
+                </div>
+              )}
 
-            {/* Genres */}
-            <div className="flex flex-wrap justify-center gap-1">
-              {movie.genres.slice(0, 3).map((genre) => (
-                <Badge key={genre} variant="secondary" className="text-xs">
-                  {genre}
-                </Badge>
-              ))}
+              <div className="flex-1 space-y-2 min-w-0">
+                <div>
+                  <h2 className="text-lg font-bold leading-tight">{movie.title}</h2>
+                  {movie.collection && (
+                    <p className="text-xs text-muted-foreground italic">Part of {movie.collection}</p>
+                  )}
+                </div>
+
+                {/* Basic info row */}
+                <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {movie.year}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" />
+                    {formatRuntime(movie.runtime)}
+                  </span>
+                  {movie.contentRating && (
+                    <Badge variant="outline" className="text-xs font-normal">
+                      {movie.contentRating}
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Genres */}
+                <div className="flex flex-wrap gap-1">
+                  {movie.genres.slice(0, 3).map((genre) => (
+                    <Badge key={genre} variant="secondary" className="text-xs">
+                      {genre}
+                    </Badge>
+                  ))}
+                </div>
+
+                {/* Keywords */}
+                {movie.keywords && movie.keywords.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {movie.keywords.slice(0, 4).map((keyword) => (
+                      <Badge key={keyword} variant="outline" className="text-[10px] font-normal">
+                        {toTitleCase(keyword)}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Rating bars */}
             {hasRatings && (
-              <div className="space-y-2 pt-2">
+              <div className="space-y-1.5 mt-3">
                 <RatingBar 
                   label="IMDB" 
                   value={movie.imdbRating} 
                   max={10} 
                   color="bg-yellow-500"
                   icon={<Star className="h-3 w-3" />}
+                />
+                <RatingBar 
+                  label={movie.tmdbVoteCount ? `TMDB (${movie.tmdbVoteCount.toLocaleString()} votes)` : "TMDB"} 
+                  value={movie.tmdbRating} 
+                  max={10} 
+                  color="bg-sky-500"
                 />
                 <RatingBar 
                   label="RT Critics" 
@@ -409,7 +457,7 @@ export default function Voting() {
 
             {/* Expandable description */}
             {movie.summary && (
-              <div className="text-left">
+              <div className="mt-3">
                 <p className={cn(
                   "text-sm text-muted-foreground transition-all",
                   !descriptionExpanded && "line-clamp-2"

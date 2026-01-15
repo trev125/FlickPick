@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getVotingResults, getSession } from "../api";
+import { getVotingResults, getSession, getSimilarMovies, type SimpleMovie } from "../api";
 import type { Movie, VotingResults } from "../types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,8 @@ import {
   Clock,
   Calendar,
   Frown,
-  User
+  User,
+  Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +27,13 @@ function formatRuntime(minutes: number): string {
   if (hours === 0) return `${mins}m`;
   if (mins === 0) return `${hours}h`;
   return `${hours}h ${mins}m`;
+}
+
+// Title case for keywords (handles hyphens: "son-in-law" -> "Son-In-Law")
+function toTitleCase(str: string): string {
+  return str.replace(/\b\w+/g, word => 
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  );
 }
 
 // Rating bar component
@@ -61,6 +69,29 @@ interface MovieCardProps {
 
 function MovieCard({ movie, compact }: MovieCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showSimilar, setShowSimilar] = useState(false);
+  const [similar, setSimilar] = useState<SimpleMovie[]>([]);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+
+  const handleToggleSimilar = async () => {
+    if (showSimilar) {
+      setShowSimilar(false);
+      return;
+    }
+    
+    if (similar.length === 0) {
+      setLoadingSimilar(true);
+      try {
+        const data = await getSimilarMovies(movie.title, movie.year);
+        setSimilar(data);
+      } catch (err) {
+        console.error("Failed to load similar movies:", err);
+      } finally {
+        setLoadingSimilar(false);
+      }
+    }
+    setShowSimilar(true);
+  };
 
   if (compact) {
     return (
@@ -92,20 +123,41 @@ function MovieCard({ movie, compact }: MovieCardProps) {
     );
   }
 
-  const hasRatings = movie.imdbRating || movie.rtCriticRating || movie.rtAudienceRating;
+  const hasRatings = movie.imdbRating || movie.rtCriticRating || movie.rtAudienceRating || movie.tmdbRating;
 
   return (
-    <Card>
-      <CardContent className="pt-4">
+    <Card className="overflow-hidden">
+      {/* Backdrop image */}
+      {movie.backdrop && (
+        <div className="relative h-80 w-full">
+          <img 
+            src={movie.backdrop} 
+            alt="" 
+            className="w-full h-full object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-card via-card/50 to-transparent" />
+        </div>
+      )}
+      <CardContent className={movie.backdrop ? "-mt-32 relative z-10" : "pt-4"}>
         <div className="flex gap-4">
           {movie.poster ? (
-            <img src={movie.poster} alt={movie.title} className="w-28 h-42 object-cover rounded-lg shadow flex-shrink-0" />
+            <img 
+              src={movie.poster} 
+              alt={movie.title} 
+              className={cn(
+                "w-28 h-42 object-cover rounded-lg shadow flex-shrink-0",
+                movie.backdrop && "ring-2 ring-card"
+              )} 
+            />
           ) : (
             <div className="w-28 h-42 bg-muted rounded-lg flex items-center justify-center text-muted-foreground flex-shrink-0">No Poster</div>
           )}
           <div className="flex-1 space-y-3 min-w-0">
             <div>
               <h3 className="text-lg font-bold">{movie.title}</h3>
+              {movie.collection && (
+                <p className="text-xs text-muted-foreground italic">Part of {movie.collection}</p>
+              )}
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mt-1">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3.5 w-3.5" />
@@ -132,10 +184,27 @@ function MovieCard({ movie, compact }: MovieCardProps) {
               ))}
             </div>
 
+            {/* Keywords */}
+            {movie.keywords && movie.keywords.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {movie.keywords.slice(0, 6).map((keyword) => (
+                  <Badge key={keyword} variant="outline" className="text-[10px] font-normal">
+                    {toTitleCase(keyword)}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
             {/* Ratings */}
             {hasRatings && (
               <div className="space-y-1.5">
                 <RatingBar label="IMDB" value={movie.imdbRating} max={10} color="bg-yellow-500" />
+                <RatingBar 
+                  label={movie.tmdbVoteCount ? `TMDB (${movie.tmdbVoteCount.toLocaleString()})` : "TMDB"} 
+                  value={movie.tmdbRating} 
+                  max={10} 
+                  color="bg-sky-500" 
+                />
                 <RatingBar label="RT Critics" value={movie.rtCriticRating} max={100} color="bg-red-500" />
                 <RatingBar label="RT Audience" value={movie.rtAudienceRating} max={100} color="bg-red-400" />
               </div>
@@ -199,6 +268,68 @@ function MovieCard({ movie, compact }: MovieCardProps) {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Similar Movies Section */}
+        <div className="mt-3 pt-3 border-t">
+          <button
+            onClick={handleToggleSimilar}
+            className="w-full flex items-center justify-between text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4" />
+              Similar Movies In Library
+            </span>
+            {loadingSimilar ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              showSimilar ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
+          
+          {showSimilar && similar.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {similar.map((rec) => (
+                <div key={rec.id} className="flex items-center gap-3 p-2 rounded-lg bg-secondary/30">
+                  {rec.poster ? (
+                    <img src={rec.poster} alt={rec.title} className="w-10 h-14 object-cover rounded" />
+                  ) : (
+                    <div className="w-10 h-14 bg-muted rounded flex items-center justify-center text-[10px] text-muted-foreground">?</div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{rec.title}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{rec.year}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    {rec.imdbRating && (
+                      <span className="flex items-center gap-0.5" title="IMDB">
+                        <Star className="h-3 w-3 text-yellow-500" />
+                        {rec.imdbRating}
+                      </span>
+                    )}
+                    {rec.tmdbRating && (
+                      <span className="flex items-center gap-0.5" title="TMDB">
+                        <Star className="h-3 w-3 text-sky-500" />
+                        {rec.tmdbRating}
+                      </span>
+                    )}
+                    {rec.rtRating && (
+                      <span className="flex items-center gap-0.5" title="Rotten Tomatoes">
+                        <Star className="h-3 w-3 text-red-500" />
+                        {rec.rtRating}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {showSimilar && similar.length === 0 && !loadingSimilar && (
+            <p className="mt-2 text-xs text-muted-foreground text-center">No similar movies found</p>
+          )}
         </div>
       </CardContent>
     </Card>

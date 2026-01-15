@@ -22,7 +22,7 @@ import {
   getVotingResults,
   getUserVotingPosition,
 } from "./session.js";
-import { getAvailableGenres, getMovieLibrarySections } from "./plex.js";
+import { getAvailableGenres, getMovieLibrarySections, getAllMovies, getSimilarMovies } from "./plex.js";
 import { RUNTIME_BLOCKS, DECADES, MOODS } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -282,6 +282,27 @@ app.get("/api/session/:code/voting-results", (req, res) => {
   }));
 
   res.json({ ...results, users: userNames });
+});
+
+// Get similar movies for a given movie
+app.get("/api/similar", async (req, res) => {
+  const { title, year } = req.query;
+  
+  if (!title || typeof title !== 'string') {
+    return res.status(400).json({ error: "Title parameter required" });
+  }
+
+  const yearNum = parseInt(year as string) || 0;
+
+  try {
+    // Get all Plex movies to cross-reference
+    const plexMovies = await getAllMovies();
+    const similar = await getSimilarMovies(title, yearNum, plexMovies);
+    res.json({ similar });
+  } catch (err) {
+    console.error("Similar movies error:", err);
+    res.status(500).json({ error: "Failed to fetch similar movies" });
+  }
 });
 
 // Image proxy - proxies Plex/TMDB images so they work from external networks
