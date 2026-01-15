@@ -33,14 +33,28 @@ export interface SessionUser {
   id: string;
   name: string;
   hasSubmitted: boolean;
+  votingComplete: boolean;
+  votesCount: number;
 }
 
 export interface SessionInfo {
   code: string;
   userCount: number;
   submittedCount: number;
+  votingCompleteCount: number;
+  movieCount: number;
+  totalMovies: number;
+  allVotingComplete: boolean;
   users: SessionUser[];
   hasResult: boolean;
+}
+
+export interface VotingResults {
+  bothYes: Movie[];
+  user1No: Movie[];
+  user2No: Movie[];
+  bothNo: Movie[];
+  users: { id: string; name: string }[];
 }
 
 export interface FilterOptions {
@@ -68,4 +82,5 @@ export interface MatchResult {
   currentIndex: number;
   isLast: boolean;
   matchedCriteria: MatchedCriteria | null;
+  movies: Movie[];
 }

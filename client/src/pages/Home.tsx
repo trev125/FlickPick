@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Loader2 } from "lucide-react";
 
 export default function Home() {
   const navigate = useNavigate();
   const [joinCode, setJoinCode] = useState("");
   const [name, setName] = useState("");
+  const [movieCount, setMovieCount] = useState(25);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,7 +26,7 @@ export default function Home() {
     setError("");
 
     try {
-      const { code } = await createSession();
+      const { code } = await createSession(movieCount);
       localStorage.setItem("flickpick_name", name);
       navigate(`/session/${code}`);
     } catch (err) {
@@ -73,6 +75,24 @@ export default function Home() {
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <Label>Movies to choose from</Label>
+              <span className="text-sm font-medium text-primary">{movieCount}</span>
+            </div>
+            <Slider
+              value={[movieCount]}
+              onValueChange={(v) => setMovieCount(v[0])}
+              min={10}
+              max={50}
+              step={5}
+              className="w-full"
+            />
+            <p className="text-xs text-muted-foreground">
+              More movies = more options, but takes longer to vote through
+            </p>
           </div>
 
           {error && (

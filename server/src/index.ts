@@ -17,6 +17,10 @@ import {
   calculateMatch,
   rerollMovie,
   previousMovie,
+  voteOnMovie,
+  allVotingComplete,
+  getVotingResults,
+  getUserVotingPosition,
 } from "./session.js";
 import { getAvailableGenres, getMovieLibrarySections } from "./plex.js";
 import { RUNTIME_BLOCKS, DECADES, MOODS } from "./types.js";
@@ -69,9 +73,10 @@ app.get("/api/libraries", async (_, res) => {
 });
 
 // Create a new session
-app.post("/api/session", (_, res) => {
-  const session = createSession();
-  res.json({ code: session.code });
+app.post("/api/session", (req, res) => {
+  const { movieCount } = req.body || {};
+  const session = createSession(movieCount);
+  res.json({ code: session.code, movieCount: session.movieCount });
 });
 
 // Get session info
@@ -86,14 +91,24 @@ app.get("/api/session/:code", (req, res) => {
     (u) => u.preferences !== null
   ).length;
 
+  const votingCompleteCount = Object.values(session.users).filter(
+    (u) => u.votingComplete
+  ).length;
+
   res.json({
     code: session.code,
     userCount,
     submittedCount,
+    votingCompleteCount,
+    movieCount: session.movieCount,
+    totalMovies: session.matchedMovies.length,
+    allVotingComplete: allVotingComplete(session),
     users: Object.entries(session.users).map(([id, u]) => ({
       id,
       name: u.name,
       hasSubmitted: u.preferences !== null,
+      votingComplete: u.votingComplete,
+      votesCount: Object.keys(u.votes).length,
     })),
     hasResult: session.result !== null,
   });
@@ -174,6 +189,7 @@ app.get("/api/session/:code/result", async (req, res) => {
     currentIndex: session.currentIndex,
     isLast,
     matchedCriteria: session.matchedCriteria,
+    movies: session.matchedMovies, // Include all movies for voting
   });
 });
 
@@ -195,6 +211,81 @@ app.post("/api/session/:code/previous", (req, res) => {
   }
 
   res.json(result);
+});
+
+// Vote on a movie
+app.post("/api/session/:code/vote", (req, res) => {
+  const { userId, movieId, vote } = req.body;
+
+  if (!userId || !movieId || vote === undefined) {
+    return res.status(400).json({ error: "userId, movieId, and vote are required" });
+  }
+
+  const result = voteOnMovie(req.params.code, userId, movieId, vote);
+  if (!result) {
+    return res.status(404).json({ error: "Session not found or user not in session" });
+  }
+
+  res.json(result);
+});
+
+// Get user's voting position
+app.get("/api/session/:code/voting-position/:userId", (req, res) => {
+  const position = getUserVotingPosition(req.params.code, req.params.userId);
+  res.json({ position });
+});
+
+// Get voting results
+app.get("/api/session/:code/voting-results", (req, res) => {
+  const session = getSession(req.params.code);
+  if (!session) {
+    return res.status(404).json({ error: "Session not found" });
+  }
+
+  if (!allVotingComplete(session)) {
+    return res.status(400).json({ error: "Not all users have finished voting" });
+  }
+
+  const results = getVotingResults(req.params.code);
+  if (!results) {
+    return res.status(500).json({ error: "Failed to get voting results" });
+  }
+
+  // Include user names for display
+  const userNames = Object.entries(session.users).map(([id, u]) => ({
+    id,
+    name: u.name,
+  }));
+
+  res.json({ ...results, users: userNames });
+});
+
+// Image proxy - proxies Plex/TMDB images so they work from external networks
+app.get("/api/image", async (req, res) => {
+  const { url } = req.query;
+  
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: "URL parameter required" });
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: "Failed to fetch image" });
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (contentType) {
+      res.setHeader('Content-Type', contentType);
+    }
+    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24h
+
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.error("Image proxy error:", err);
+    res.status(500).json({ error: "Failed to proxy image" });
+  }
 });
 
 // SPA fallback - serve index.html for all non-API routes in production

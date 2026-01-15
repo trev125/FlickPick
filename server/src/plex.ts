@@ -17,6 +17,12 @@ function getTmdbApiKey() {
   return process.env.TMDB_API_KEY || "";
 }
 
+// Proxy image URLs through our server so they work from external networks
+function proxyImageUrl(url: string | null): string | null {
+  if (!url) return null;
+  return `/api/image?url=${encodeURIComponent(url)}`;
+}
+
 function getDecade(year: number): string {
   const decadeStart = Math.floor(year / 10) * 10;
   return `${decadeStart}s`;
@@ -113,7 +119,8 @@ async function fetchPersonImage(name: string): Promise<string | null> {
 
     const profilePath = data.results?.[0]?.profile_path;
     // w92 is a small size, good for avatars (~2-5KB per image)
-    const imageUrl = profilePath ? `https://image.tmdb.org/t/p/w92${profilePath}` : null;
+    const rawUrl = profilePath ? `https://image.tmdb.org/t/p/w92${profilePath}` : null;
+    const imageUrl = proxyImageUrl(rawUrl);
     
     personImageCache.set(name, imageUrl);
     return imageUrl;
@@ -307,6 +314,7 @@ export async function getAllMovies(sectionKey?: string): Promise<Movie[]> {
       const runtimeMinutes = Math.round(movie.duration / 60000);
       const year = movie.year || new Date().getFullYear();
 
+      const posterUrl = movie.thumb ? `${plexUrl}${movie.thumb}?X-Plex-Token=${plexToken}` : null;
       allMovies.push({
         id: movie.ratingKey,
         title: movie.title,
@@ -319,7 +327,7 @@ export async function getAllMovies(sectionKey?: string): Promise<Movie[]> {
         rtCriticRating: null,
         rtAudienceRating: null,
         imdbId: null,
-        poster: movie.thumb ? `${plexUrl}${movie.thumb}?X-Plex-Token=${plexToken}` : null,
+        poster: proxyImageUrl(posterUrl),
         summary: movie.summary || null,
         watched: (movie.viewCount || 0) > 0,
         contentRating: null,

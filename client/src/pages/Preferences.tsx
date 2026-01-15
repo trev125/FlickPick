@@ -100,7 +100,7 @@ export default function Preferences() {
       const { allSubmitted } = await submitPreferences(code, userId, preferences);
 
       if (allSubmitted) {
-        navigate(`/session/${code}/results`);
+        navigate(`/session/${code}/voting`);
       } else {
         navigate(`/session/${code}`);
       }

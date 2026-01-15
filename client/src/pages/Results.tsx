@@ -84,7 +84,8 @@ export default function Results() {
       const sessionData = await getSession(code);
       setSession(sessionData);
 
-      if (sessionData.submittedCount < 2) {
+      // Check if all users have submitted (works for both solo and duo)
+      if (sessionData.submittedCount < sessionData.userCount || sessionData.userCount === 0) {
         setLoading(false);
         return;
       }
@@ -336,9 +337,9 @@ export default function Results() {
 
   const hasRatings = movie.imdbRating || movie.rtCriticRating || movie.rtAudienceRating;
 
-  // Slight rotation for visual feedback (very subtle)
-  const rotation = dragOffset * 0.01;
-  const opacity = 1 - Math.abs(dragOffset) / 500;
+  // Visual feedback - only fade after reaching swipe threshold
+  const pastThreshold = Math.abs(dragOffset) > minSwipeDistance;
+  const opacity = pastThreshold ? 0.6 : 1;
 
   return (
     <div className="space-y-4">
@@ -356,11 +357,12 @@ export default function Results() {
         ref={cardRef}
         className={cn(
           "cursor-grab active:cursor-grabbing select-none",
-          !isDragging && "transition-transform duration-200",
-          rerolling && "opacity-50 scale-[0.98]"
+          !isDragging && "transition-all duration-200",
+          rerolling && "opacity-50 scale-[0.98]",
+          isDragging && pastThreshold && "ring-2 ring-primary"
         )}
         style={{
-          transform: `translateX(${dragOffset}px) rotate(${rotation}deg)`,
+          transform: `translateX(${dragOffset}px)`,
           opacity: isDragging ? opacity : 1,
         }}
         onTouchStart={onTouchStart}

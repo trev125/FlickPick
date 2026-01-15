@@ -6,11 +6,12 @@ const generateCode = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
 
 const sessions = new Map<string, Session>();
 
-export function createSession(): Session {
+export function createSession(movieCount: number = 25): Session {
   const code = generateCode();
   const session: Session = {
     code,
     createdAt: new Date(),
+    movieCount: Math.min(Math.max(movieCount, 5), 100), // Clamp between 5 and 100
     users: {},
     result: null,
     matchedMovies: [],
@@ -42,6 +43,8 @@ export function joinSession(
       name,
       preferences: null,
       joinedAt: new Date(),
+      votes: {},
+      votingComplete: false,
     };
   }
 
@@ -62,7 +65,12 @@ export function submitPreferences(
 
 export function allUsersSubmitted(session: Session): boolean {
   const users = Object.values(session.users);
-  return users.length === 2 && users.every((u) => u.preferences !== null);
+  // Support both solo (1 user) and duo (2 users) modes
+  return users.length >= 1 && users.length <= 2 && users.every((u) => u.preferences !== null);
+}
+
+export function isSoloSession(session: Session): boolean {
+  return Object.keys(session.users).length === 1;
 }
 
 function computeOverlappingRange(
@@ -89,17 +97,22 @@ export async function calculateMatch(code: string): Promise<Session | null> {
 
   const users = Object.values(session.users);
   const prefs1 = users[0].preferences!;
-  const prefs2 = users[1].preferences!;
+  const prefs2 = users.length > 1 ? users[1].preferences! : null;
+  const solo = prefs2 === null;
 
   // Get all movies from Plex
   let movies = await getAllMovies();
 
-  // Compute overlapping ranges
-  const yearRange = computeOverlappingRange(prefs1.yearRange, prefs2.yearRange);
-  const runtimeRange = computeOverlappingRange(prefs1.runtimeRange, prefs2.runtimeRange);
+  // Compute ranges (solo uses just prefs1, duo computes overlap)
+  const yearRange = solo ? prefs1.yearRange : computeOverlappingRange(prefs1.yearRange, prefs2.yearRange);
+  const runtimeRange = solo ? prefs1.runtimeRange : computeOverlappingRange(prefs1.runtimeRange, prefs2.runtimeRange);
 
-  // First pass: filter by non-rating criteria (fast)
-  const combinedPrefs: UserPreferences = {
+  // Combined preferences
+  const combinedPrefs: UserPreferences = solo ? {
+    ...prefs1,
+    yearRange,
+    runtimeRange,
+  } : {
     genres: [...new Set([...prefs1.genres, ...prefs2.genres])],
     yearRange,
     runtimeRange,
@@ -109,19 +122,19 @@ export async function calculateMatch(code: string): Promise<Session | null> {
     includeWatched: prefs1.includeWatched && prefs2.includeWatched,
   };
 
-  // Filter movies that match both users' basic criteria
+  // Filter movies that match criteria
   let candidates = movies.filter((m) => {
     // Check watched status
     if (!combinedPrefs.includeWatched && m.watched) return false;
 
-    // Check genres (movie must have at least one genre each user selected, if they selected any)
+    // Check genres
     if (prefs1.genres.length > 0 && !m.genres.some((g) => prefs1.genres.includes(g))) return false;
-    if (prefs2.genres.length > 0 && !m.genres.some((g) => prefs2.genres.includes(g))) return false;
+    if (prefs2 && prefs2.genres.length > 0 && !m.genres.some((g) => prefs2.genres.includes(g))) return false;
 
-    // Check year range (overlap of both users' preferences)
+    // Check year range
     if (yearRange && (m.year < yearRange.min || m.year > yearRange.max)) return false;
 
-    // Check runtime range (overlap of both users' preferences)
+    // Check runtime range
     if (runtimeRange && (m.runtime < runtimeRange.min || m.runtime > runtimeRange.max)) return false;
 
     return true;
@@ -135,7 +148,7 @@ export async function calculateMatch(code: string): Promise<Session | null> {
   }
 
   // Enrich top candidates with ratings (to save API calls)
-  const maxToEnrich = Math.min(candidates.length, 50);
+  const maxToEnrich = Math.min(candidates.length, session.movieCount);
   const enriched: Movie[] = [];
 
   for (let i = 0; i < maxToEnrich; i++) {
@@ -162,14 +175,22 @@ export async function calculateMatch(code: string): Promise<Session | null> {
 
   // Store the matched criteria for display
   // Track what was actually specified vs skipped
-  const genresSkipped = prefs1.genres.length === 0 && prefs2.genres.length === 0;
-  const yearSkipped = prefs1.yearRange === null && prefs2.yearRange === null;
-  const runtimeSkipped = prefs1.runtimeRange === null && prefs2.runtimeRange === null;
-  const ratingSkipped = (prefs1.minImdbRating === null || prefs1.minImdbRating === 0) && 
-                        (prefs2.minImdbRating === null || prefs2.minImdbRating === 0);
+  const genresSkipped = solo 
+    ? prefs1.genres.length === 0 
+    : prefs1.genres.length === 0 && prefs2!.genres.length === 0;
+  const yearSkipped = solo 
+    ? prefs1.yearRange === null 
+    : prefs1.yearRange === null && prefs2!.yearRange === null;
+  const runtimeSkipped = solo 
+    ? prefs1.runtimeRange === null 
+    : prefs1.runtimeRange === null && prefs2!.runtimeRange === null;
+  const ratingSkipped = solo
+    ? (prefs1.minImdbRating === null || prefs1.minImdbRating === 0)
+    : (prefs1.minImdbRating === null || prefs1.minImdbRating === 0) && 
+      (prefs2!.minImdbRating === null || prefs2!.minImdbRating === 0);
 
-  // Find common genres between both users' selections
-  const commonGenres = prefs1.genres.filter(g => prefs2.genres.includes(g));
+  // Find common genres (solo just uses prefs1)
+  const commonGenres = solo ? prefs1.genres : prefs1.genres.filter(g => prefs2!.genres.includes(g));
   session.matchedCriteria = {
     genres: commonGenres.length > 0 ? commonGenres : combinedPrefs.genres,
     genresSkipped,
@@ -228,6 +249,82 @@ export function previousMovie(code: string): { result: Movie | null; isLast: boo
   const isFirst = session.currentIndex === 0;
   
   return { result: session.result, isLast, isFirst };
+}
+
+// Vote on a movie
+export function voteOnMovie(
+  code: string,
+  userId: string,
+  movieId: string,
+  vote: boolean
+): { success: boolean; votingComplete: boolean } | null {
+  const session = sessions.get(code.toUpperCase());
+  if (!session || !session.users[userId]) return null;
+
+  session.users[userId].votes[movieId] = vote;
+  
+  // Check if user has voted on all movies
+  const totalMovies = session.matchedMovies.length;
+  const userVotes = Object.keys(session.users[userId].votes).length;
+  const votingComplete = userVotes >= totalMovies;
+  
+  if (votingComplete) {
+    session.users[userId].votingComplete = true;
+  }
+
+  return { success: true, votingComplete };
+}
+
+// Check if all users have finished voting
+export function allVotingComplete(session: Session): boolean {
+  const users = Object.values(session.users);
+  return users.length >= 1 && users.every((u) => u.votingComplete);
+}
+
+// Get voting results
+export interface VotingResults {
+  bothYes: Movie[];
+  user1No: Movie[];
+  user2No: Movie[];
+  bothNo: Movie[];
+}
+
+export function getVotingResults(code: string): VotingResults | null {
+  const session = sessions.get(code.toUpperCase());
+  if (!session) return null;
+
+  const userIds = Object.keys(session.users);
+  const user1Id = userIds[0];
+  const user2Id = userIds[1]; // May be undefined for solo
+
+  const bothYes: Movie[] = [];
+  const user1No: Movie[] = [];
+  const user2No: Movie[] = [];
+  const bothNo: Movie[] = [];
+
+  for (const movie of session.matchedMovies) {
+    const user1Vote = session.users[user1Id]?.votes[movie.id];
+    const user2Vote = user2Id ? session.users[user2Id]?.votes[movie.id] : true; // Solo mode: treat as yes
+
+    if (user1Vote && user2Vote) {
+      bothYes.push(movie);
+    } else if (!user1Vote && !user2Vote) {
+      bothNo.push(movie);
+    } else if (!user1Vote) {
+      user1No.push(movie);
+    } else {
+      user2No.push(movie);
+    }
+  }
+
+  return { bothYes, user1No, user2No, bothNo };
+}
+
+// Get user's current voting position
+export function getUserVotingPosition(code: string, userId: string): number {
+  const session = sessions.get(code.toUpperCase());
+  if (!session || !session.users[userId]) return 0;
+  return Object.keys(session.users[userId].votes).length;
 }
 
 // Cleanup old sessions (run periodically)

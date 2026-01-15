@@ -252,6 +252,22 @@ export default function Session() {
         </CardContent>
       </Card>
 
+      {/* Solo mode - 1 player can start alone */}
+      {session.userCount === 1 && !currentUser?.hasSubmitted && (
+        <div className="space-y-2">
+          <Button
+            className="w-full"
+            onClick={() => navigate(`/session/${code}/preferences`)}
+          >
+            Play Solo
+          </Button>
+          <p className="text-xs text-center text-muted-foreground">
+            Or share the code above and wait for a friend to join
+          </p>
+        </div>
+      )}
+
+      {/* Duo mode - 2 players */}
       {session.userCount === 2 && (
         <Button
           className="w-full"
@@ -262,13 +278,14 @@ export default function Session() {
         </Button>
       )}
 
-      {session.submittedCount === 2 && (
+      {/* Start voting when all have submitted */}
+      {session.submittedCount >= 1 && session.submittedCount === session.userCount && (
         <Button
           className="w-full"
-          onClick={() => navigate(`/session/${code}/results`)}
+          onClick={() => navigate(`/session/${code}/voting`)}
         >
           <Film className="h-4 w-4" />
-          View Results
+          Start Voting
         </Button>
       )}
     </div>

@@ -1,4 +1,4 @@
-import type { FilterOptions, SessionInfo, UserPreferences, MatchResult } from "./types";
+import type { FilterOptions, SessionInfo, UserPreferences, MatchResult, VotingResults } from "./types";
 
 const API_BASE = "/api";
 
@@ -23,8 +23,11 @@ export async function getFilters(): Promise<FilterOptions> {
   return request<FilterOptions>("/filters");
 }
 
-export async function createSession(): Promise<{ code: string }> {
-  return request<{ code: string }>("/session", { method: "POST" });
+export async function createSession(movieCount?: number): Promise<{ code: string; movieCount: number }> {
+  return request<{ code: string; movieCount: number }>("/session", { 
+    method: "POST",
+    body: JSON.stringify({ movieCount }),
+  });
 }
 
 export async function getSession(code: string): Promise<SessionInfo> {
@@ -70,4 +73,20 @@ export async function previous(code: string): Promise<{ result: MatchResult["res
   return request<{ result: MatchResult["result"]; isLast: boolean; isFirst: boolean }>(`/session/${code}/previous`, {
     method: "POST",
   });
+}
+
+export async function vote(
+  code: string,
+  userId: string,
+  movieId: string,
+  voteValue: boolean
+): Promise<{ success: boolean; votingComplete: boolean }> {
+  return request<{ success: boolean; votingComplete: boolean }>(`/session/${code}/vote`, {
+    method: "POST",
+    body: JSON.stringify({ userId, movieId, vote: voteValue }),
+  });
+}
+
+export async function getVotingResults(code: string): Promise<VotingResults> {
+  return request<VotingResults>(`/session/${code}/voting-results`);
 }

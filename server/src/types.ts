@@ -43,11 +43,14 @@ export interface MatchedCriteria {
 export interface Session {
   code: string;
   createdAt: Date;
+  movieCount: number; // Number of movies to choose from
   users: {
     [userId: string]: {
       name: string;
       preferences: UserPreferences | null;
       joinedAt: Date;
+      votes: { [movieId: string]: boolean }; // true = yes, false = no
+      votingComplete: boolean;
     };
   };
   result: Movie | null;
